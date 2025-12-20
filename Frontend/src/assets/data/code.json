@@ -1,0 +1,57 @@
+{
+    "total": 740,
+    "codeMap": [
+      {
+        "codeType": "js",
+        "value": 175
+      },
+      {
+        "codeType": "python",
+        "value": 143
+      },
+      {
+        "codeType": "html",
+        "value": 116
+      },
+      {
+        "codeType": "*",
+        "value": 87
+      },
+      {
+        "codeType": "vue",
+        "value": 77
+      },
+      {
+        "codeType": "json",
+        "value": 44
+      },
+      {
+        "codeType": "css",
+        "value": 29
+      },
+      {
+        "codeType": "bat",
+        "value": 24
+      },
+      {
+        "codeType": "bash",
+        "value": 19
+      },
+      {
+        "codeType": "py",
+        "value": 9
+      },
+      {
+        "codeType": "ts",
+        "value": 7
+      },
+      {
+        "codeType": "text",
+        "value": 7
+      },
+      {
+        "codeType": "c",
+        "value": 3
+      }
+    ]
+  }

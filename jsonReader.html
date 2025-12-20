@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON 深度阅读器 - Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* 基础滚动条样式 */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* JSON 语法高亮 */
+        .j-key { color: #d946ef; font-weight: 600; }
+        .j-str { color: #16a34a; word-break: break-all; }
+        .j-num { color: #2563eb; }
+        .j-bool { color: #ea580c; font-weight: bold; }
+        .j-null { color: #9ca3af; font-style: italic; }
+
+        /* 左侧大纲样式 */
+        .outline-tree {
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+
+        /* 树形结构连接线 */
+        .tree-children {
+            border-left: 1px solid #e2e8f0; /* slate-200 */
+            margin-left: 0.75rem; /* 控制缩进量 */
+            padding-left: 0.25rem;
+        }
+
+        /* Sticky Header 核心样式 */
+        .tree-header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            background-color: rgba(255, 255, 255, 0.95); /* 防止透明重叠 */
+            backdrop-filter: blur(2px);
+            border-bottom: 1px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+            padding: 2px 4px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        /* 当 header 处于吸附状态时的样式增强（可选，需JS配合，这里仅做基础吸附） */
+        .tree-node:hover > .tree-header {
+            background-color: #f1f5f9; /* slate-100 */
+        }
+
+        /* 选中/高亮样式 */
+        .outline-active > .tree-header {
+            background-color: #dbeafe !important; /* blue-100 */
+            color: #1e40af;
+            font-weight: bold;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        /* 右侧内容块样式 */
+        .content-block {
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            transition: background-color 0.3s;
+        }
+        
+        /* 键值对行样式 */
+        .kv-row {
+            display: flex;
+            align-items: baseline;
+            padding: 2px 0;
+            border-bottom: 1px dashed rgba(0,0,0,0.03);
+        }
+        .kv-row:last-child { border-bottom: none; }
+        .kv-key { flex-shrink: 0; margin-right: 8px; }
+        
+        /* 加载动画 */
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid #f3f3f3; border-top: 4px solid #3b82f6;
+            border-radius: 50%; animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="h-screen flex flex-col bg-slate-50 text-slate-800 overflow-hidden">
+
+    <!-- 顶部导航 -->
+    <header class="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 shadow-sm z-30">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
+                <i class="fa-solid fa-code-branch"></i>
+            </div>
+            <h1 class="font-bold text-slate-700 tracking-tight">JSON Reader <span class="text-blue-600 font-extrabold">Pro</span></h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <span id="fileInfo" class="text-xs text-slate-400 font-mono hidden md:block"></span>
+            <label class="group cursor-pointer bg-slate-800 hover:bg-blue-600 text-white px-4 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-2 shadow-lg shadow-blue-900/10">
+                <i class="fa-solid fa-cloud-arrow-up group-hover:animate-bounce"></i>
+                <span>打开 JSON</span>
+                <input type="file" id="fileInput" accept=".json" class="hidden">
+            </label>
+        </div>
+    </header>
+
+    <!-- 主界面 -->
+    <main class="flex-1 flex overflow-hidden relative">
+        
+        <!-- 空状态提示 -->
+        <div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50/80 z-20 backdrop-blur-sm">
+            <div class="text-center p-8 rounded-2xl border-2 border-dashed border-slate-300 bg-white shadow-xl max-w-md">
+                <i class="fa-solid fa-file-code text-5xl text-slate-300 mb-4"></i>
+                <h3 class="text-lg font-bold text-slate-700">拖入文件 或 点击右上角上传</h3>
+                <p class="text-slate-400 text-sm mt-2">支持复杂嵌套与 Unicode 自动解析</p>
+            </div>
+        </div>
+
+        <!-- 左侧大纲 (Outline) -->
+        <aside class="w-1/4 min-w-[250px] max-w-[400px] bg-white border-r border-slate-200 flex flex-col shrink-0 z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+            <div class="h-10 border-b border-slate-100 flex items-center px-4 bg-slate-50 shrink-0">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-widest flex-1">Structure</span>
+                <span id="nodeCount" class="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">0 nodes</span>
+            </div>
+            <div id="outlineContainer" class="flex-1 overflow-y-auto overflow-x-hidden p-3 outline-tree custom-scrollbar relative">
+                <!-- 大纲树结构将注入此处 -->
+            </div>
+        </aside>
+
+        <!-- 右侧内容 (Content) -->
+        <section id="contentArea" class="flex-1 bg-slate-100 overflow-y-auto relative scroll-smooth p-4 md:p-8">
+            <div id="jsonContent" class="max-w-5xl mx-auto min-h-full font-mono text-sm pb-20">
+                <!-- JSON 详情块将注入此处 -->
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const emptyState = document.getElementById('emptyState');
+        const outlineContainer = document.getElementById('outlineContainer');
+        const jsonContent = document.getElementById('jsonContent');
+        const fileInfo = document.getElementById('fileInfo');
+        const nodeCount = document.getElementById('nodeCount');
+        const contentArea = document.getElementById('contentArea');
+
+        let observer;
+        let isProgrammaticScroll = false;
+        let idCounter = 0;
+        let activeOutlineId = null;
+
+        // --- 核心逻辑 ---
+
+        fileInput.addEventListener('change', (e) => loadFile(e.target.files[0]));
+        
+        // 拖拽支持
+        document.body.addEventListener('dragover', (e) => e.preventDefault());
+        document.body.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if(e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+        });
+
+        function loadFile(file) {
+            if (!file) return;
+            
+            // UI 重置
+            fileInfo.textContent = `${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+            emptyState.style.display = 'none';
+            jsonContent.innerHTML = '<div class="flex justify-center pt-20"><div class="spinner"></div></div>';
+            outlineContainer.innerHTML = '';
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    renderJSON(data);
+                } catch (err) {
+                    alert('Invalid JSON File');
+                    jsonContent.innerHTML = `<div class="text-red-500 bg-red-50 p-4 rounded border border-red-200">Parsing Error: ${err.message}</div>`;
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function renderJSON(data) {
+            // 清理
+            jsonContent.innerHTML = '';
+            outlineContainer.innerHTML = '';
+            if (observer) observer.disconnect();
+            idCounter = 0;
+
+            const contentFragment = document.createDocumentFragment();
+            const outlineFragment = document.createDocumentFragment();
+
+            // 递归构建函数
+            // 参数: 当前数据, 内容区父容器, 大纲区父容器, 深度, 路径Key, 是否是数组项
+            function build(obj, contentParent, outlineParent, depth, keyName) {
+                const isObj = typeof obj === 'object' && obj !== null;
+                const isArray = Array.isArray(obj);
+                const currentId = `node-${idCounter++}`;
+
+                // --- 1. Outline 构建 (仅针对对象/数组容器) ---
+                let nextOutlineParent = outlineParent; // 默认透传
+
+                if (isObj || depth === 0) {
+                    // 创建大纲节点容器
+                    const treeNode = document.createElement('div');
+                    treeNode.className = 'tree-node';
+                    treeNode.id = `outline-${currentId}`;
+
+                    // 创建 Header (Sticky)
+                    const header = document.createElement('div');
+                    header.className = 'tree-header group';
+                    header.dataset.target = currentId;
+                    
+                    // 图标逻辑
+                    let iconHtml = '';
+                    if (depth === 0) iconHtml = '<i class="fa-solid fa-database text-purple-500"></i>';
+                    else if (isArray) iconHtml = '<i class="fa-solid fa-layer-group text-orange-400 text-xs"></i>';
+                    else iconHtml = '<i class="fa-solid fa-cube text-blue-400 text-xs"></i>';
+
+                    // 标签文本
+                    let labelText = keyName || 'Root';
+                    if (isArray) labelText += ` [${obj.length}]`;
+                    else if (isObj) labelText += ` {${Object.keys(obj).length}}`;
+
+                    header.innerHTML = `${iconHtml}<span class="truncate">${labelText}</span>`;
+                    
+                    // 点击跳转
+                    header.onclick = (e) => {
+                        e.stopPropagation();
+                        scrollToContent(currentId);
+                        setActiveOutline(treeNode.id);
+                    };
+
+                    treeNode.appendChild(header);
+
+                    // 创建子节点容器 (用于缩进)
+                    const childrenContainer = document.createElement('div');
+                    childrenContainer.className = 'tree-children';
+                    treeNode.appendChild(childrenContainer);
+
+                    outlineParent.appendChild(treeNode);
+                    nextOutlineParent = childrenContainer; // 子元素挂载到这里
+                }
+
+                // --- 2. Content 构建 ---
+                const wrapper = document.createElement('div');
+                wrapper.id = currentId;
+                wrapper.className = 'content-block shadow-sm';
+                
+                // 动态背景色 (根据深度)
+                // HSL: 色相轮转, 亮度随深度变暗以体现层级
+                const hue = (210 + (depth * 25)) % 360; 
+                const bgL = Math.max(93, 100 - (depth * 1.5)); // 背景亮度
+                const borderL = bgL - 5;
+                
+                wrapper.style.backgroundColor = `hsla(${hue}, 60%, ${bgL}%, 1)`;
+                wrapper.style.borderColor = `hsla(${hue}, 30%, ${borderL}%, 1)`;
+
+                // 标题栏 (如果不是根节点)
+                if (keyName && depth > 0) {
+                    const title = document.createElement('div');
+                    title.className = "text-xs font-bold opacity-60 mb-2 flex items-center gap-2 select-none text-slate-600";
+                    title.innerHTML = `<i class="fa-solid fa-chevron-right text-[10px]"></i> ${keyName}`;
+                    wrapper.appendChild(title);
+                }
+
+                if (isObj) {
+                    const keys = Object.keys(obj);
+                    if (keys.length === 0) {
+                        wrapper.innerHTML += `<div class="text-xs text-slate-400 italic pl-2">Empty ${isArray ? 'Array' : 'Object'}</div>`;
+                    } else {
+                        keys.forEach(k => {
+                            const val = obj[k];
+                            // 递归
+                            if (typeof val === 'object' && val !== null) {
+                                // 复杂对象：创建新行容器
+                                const subRow = document.createElement('div');
+                                subRow.className = "mt-1 pl-1 md:pl-2"; // 内容区也做微小缩进
+                                build(val, subRow, nextOutlineParent, depth + 1, k);
+                                wrapper.appendChild(subRow);
+                            } else {
+                                // 简单值：直接渲染
+                                const row = document.createElement('div');
+                                row.className = "kv-row hover:bg-black/5 rounded px-2 transition-colors";
+                                
+                                const kSpan = document.createElement('span');
+                                kSpan.className = "j-key kv-key select-text";
+                                kSpan.textContent = `"${k}":`;
+                                
+                                const vSpan = document.createElement('span');
+                                vSpan.className = "select-text text-sm flex-1";
+                                
+                                if (typeof val === 'string') {
+                                    vSpan.className += " j-str";
+                                    vSpan.textContent = `"${val}"`;
+                                } else if (typeof val === 'number') {
+                                    vSpan.className += " j-num";
+                                    vSpan.textContent = val;
+                                } else if (typeof val === 'boolean') {
+                                    vSpan.className += " j-bool";
+                                    vSpan.textContent = val;
+                                } else if (val === null) {
+                                    vSpan.className += " j-null";
+                                    vSpan.textContent = "null";
+                                }
+                                
+                                row.appendChild(kSpan);
+                                row.appendChild(vSpan);
+                                wrapper.appendChild(row);
+                            }
+                        });
+                    }
+                }
+
+                contentParent.appendChild(wrapper);
+            }
+
+            build(data, contentFragment, outlineFragment, 0, '');
+            
+            jsonContent.appendChild(contentFragment);
+            outlineContainer.appendChild(outlineFragment);
+            nodeCount.textContent = `${idCounter} Blocks`;
+
+            initSpyScroll();
+        }
+
+        // --- 交互功能 ---
+
+        function scrollToContent(id) {
+            isProgrammaticScroll = true;
+            const el = document.getElementById(id);
+            if(el) {
+                // 计算偏移量，留出 sticky header 的空间（虽然 content 区没有 sticky，但保持视觉舒适）
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                
+                // 闪烁效果提示用户位置
+                el.style.transition = 'box-shadow 0.3s';
+                el.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.5)';
+                setTimeout(() => {
+                    el.style.boxShadow = '';
+                    isProgrammaticScroll = false;
+                }, 1000);
+            }
+        }
+
+        function setActiveOutline(outlineNodeId) {
+            // 移除旧的高亮
+            if (activeOutlineId) {
+                const prev = document.getElementById(activeOutlineId);
+                if (prev) prev.classList.remove('outline-active');
+            }
+            
+            // 添加新高亮
+            const curr = document.getElementById(outlineNodeId);
+            if (curr) {
+                curr.classList.add('outline-active');
+                activeOutlineId = outlineNodeId;
+                
+                // 确保大纲可视，但不干扰 sticky 行为
+                // scrollIntoView 有时会破坏 sticky 效果，所以这里只在完全不可见时滚动
+                // 简单起见，我们不做自动滚动大纲，除非用户手动点击
+            }
+        }
+
+        function initSpyScroll() {
+            // IntersectionObserver 用于监听当前阅读位置
+            // 我们只监听每个 block 的顶部进入视口的情况
+            const options = {
+                root: contentArea,
+                rootMargin: '-5% 0px -80% 0px', // 判定线在视口顶部附近
+                threshold: 0
+            };
+
+            observer = new IntersectionObserver((entries) => {
+                if (isProgrammaticScroll) return;
+
+                // 找出当前在视口中最"重要"的元素
+                // 这里的逻辑：取最后一个 intersecting 的元素 (通常是最深层的子元素)
+                const visible = entries.filter(e => e.isIntersecting);
+                if (visible.length > 0) {
+                    const target = visible[visible.length - 1]; // 最内层
+                    const contentId = target.target.id;
+                    const outlineNodeId = `outline-${contentId}`;
+                    
+                    // 只有当该节点在 outline 中存在时才高亮 (叶子节点没有 outline)
+                    if (document.getElementById(outlineNodeId)) {
+                        setActiveOutline(outlineNodeId);
+                    }
+                }
+            }, options);
+
+            document.querySelectorAll('.content-block').forEach(el => observer.observe(el));
+        }
+
+    </script>
+</body>
+</html>
