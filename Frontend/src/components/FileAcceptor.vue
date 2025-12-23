@@ -88,7 +88,7 @@
         @drop.prevent="handleDrop"
     >
         <p>
-            <span v-if="!isLoading">please upload one Deepseek's zip</span>
+            <span v-if="!isLoading">please upload one AI's zip (ChatGPT or deepseek)</span>
             <span v-else>loading...</span>
         </p>
         <input 

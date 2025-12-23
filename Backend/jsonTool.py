@@ -7,65 +7,13 @@ def parse_GG_conversations(input_payload):
     解析从前端/Zip工具传来的 JSON 数据。
     """
     
-    # -------------------------------------------------------
-    # 1. 第一层解析：处理传入的 Wrapper JSON
-    # -------------------------------------------------------
-    if isinstance(input_payload, str):
-        try:
-            data = json.loads(input_payload)
-        except json.JSONDecodeError:
-            return {"status": "error", "error": "Input payload is not valid JSON"}
-    else:
-        data = input_payload
-
-    if data.get("status") != "success":
-        return data
-
-    # -------------------------------------------------------
-    # 2. 提取并解析 content
-    # -------------------------------------------------------
-    files = data.get("files", [])
-    target_content_str = None
+    data = input_payload
+    file = data.get("file", [])
     
-    for f in files:
-        if "conversations.json" in f.get("filename", ""):
-            target_content_str = f.get("content")
-            break
-    
-    if not target_content_str:
-        return {"status": "error", "error": "conversations.json not found in files"}
-
     try:
-        conversations_list = json.loads(target_content_str)
+        conversations_list = json.loads(file)
     except json.JSONDecodeError:
         return {"status": "error", "error": "conversations.json content is not valid JSON"}
-
-    # =======================================================
-    # 【修复核心】：智能处理数据结构异常
-    # =======================================================
-    
-    # 情况A: 如果解析出来还是字符串（双重序列化问题），再解一次
-    if isinstance(conversations_list, str):
-        try:
-            conversations_list = json.loads(conversations_list)
-        except:
-            pass # 如果解不开，可能就是普通字符串，交给下面处理
-            
-    # 情况B: 如果最外层是字典 (Dict)，而不是列表 (List)
-    # 这会导致 for 循环遍历的是 Key (字符串)，引发 AttributeError
-    if isinstance(conversations_list, dict):
-        # 尝试查找可能的列表字段，OpenAI 有时会改变导出结构
-        if "conversations" in conversations_list:
-            conversations_list = conversations_list["conversations"]
-        elif "items" in conversations_list:
-            conversations_list = conversations_list["items"]
-        else:
-            # 如果找不到列表，说明结构完全不对
-            # 返回错误而不是让程序崩溃
-            return {
-                "status": "error", 
-                "error": f"Unexpected JSON structure. Expected List, got Dict keys: {list(conversations_list.keys())}"
-            }
 
     # 情况C: 确保它现在真的是个列表
     if not isinstance(conversations_list, list):
@@ -162,57 +110,13 @@ def parse_DeepSeek_conversations(input_payload):
     3. 时间格式为 ISO 8601 (2025-03-08T...)。
     """
     
-    # 1. 获取内容 (兼容 input_payload 包裹结构)
-    if isinstance(input_payload, str):
-        try:
-            data = json.loads(input_payload)
-        except json.JSONDecodeError:
-            return {"status": "error", "error": "Input payload is not valid JSON"}
-    else:
-        data = input_payload
-
-    files = data.get("files", [])
-    target_content_str = None
-    
-    for f in files:
-        if "conversations.json" in f.get("filename", ""):
-            target_content_str = f.get("content")
-            break
-    
-    if not target_content_str:
-        return {"status": "error", "error": "conversations.json not found in files"}
+    data = input_payload
+    file = data.get("file", [])
 
     try:
-        conversations_list = json.loads(target_content_str)
+        conversations_list = json.loads(file)
     except json.JSONDecodeError:
         return {"status": "error", "error": "conversations.json content is not valid JSON"}
-
-    # =======================================================
-    # 【修复核心】：智能处理数据结构异常
-    # =======================================================
-    
-    # 情况A: 如果解析出来还是字符串（双重序列化问题），再解一次
-    if isinstance(conversations_list, str):
-        try:
-            conversations_list = json.loads(conversations_list)
-        except:
-            pass # 如果解不开，可能就是普通字符串，交给下面处理
-            
-    # 情况B: 如果最外层是字典 (Dict)，而不是列表 (List)
-    # 这会导致 for 循环遍历的是 Key (字符串)，引发 AttributeError
-    if isinstance(conversations_list, dict):
-        # 尝试查找可能的列表字段，OpenAI 有时会改变导出结构
-        if "conversations" in conversations_list:
-            conversations_list = conversations_list["conversations"]
-        elif "items" in conversations_list:
-            conversations_list = conversations_list["items"]
-        else:
-            # 如果找不到列表，说明结构完全不对
-            # 返回错误而不是让程序崩溃
-            return {
-                "status": "error", 
-                "error": f"Unexpected JSON structure. Expected List, got Dict keys: {list(conversations_list.keys())}"
-            }
 
     # 情况C: 确保它现在真的是个列表
     if not isinstance(conversations_list, list):
@@ -220,7 +124,6 @@ def parse_DeepSeek_conversations(input_payload):
             "status": "error", 
             "error": f"Expected conversations to be a list, but got {type(conversations_list).__name__}"
         }
-
 
     final_output = []
 

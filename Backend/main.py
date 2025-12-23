@@ -2,6 +2,8 @@ from fastapi import FastAPI, UploadFile, File
 from keybert import KeyBERT
 from fastapi.middleware.cors import CORSMiddleware
 from zipfiletool import getconservationsjson
+from zipfiletool import getGeminiConversationsjson
+from zipfiletool import SortingAI
 from jsonTool import parse_GG_conversations
 from jsonTool import parse_DeepSeek_conversations
 from jsonTool import analyze_time_distribution
@@ -30,17 +32,25 @@ print("模型加载完毕！")
 async def process_zip(file: UploadFile = File(...)):
     # 1. 读取上传的文件内容到内存
     content = await file.read()
-    # 2. 准备返回的数据列表
-    process1 = getconservationsjson(content)
-    # process2 = parse_GG_conversations(process1)
-    process2 = parse_DeepSeek_conversations(process1)
-    time = analyze_time_distribution(process2)
-    words = analyze_word_count(process2)
-    bubbles = analyze_bubble_counts(process2)
-    code = analyze_code_stats(process2)
-    emotions = analyze_emotion_trend(process2)
+    # 2. 判断类型
+    sort = SortingAI(content)
+    if sort == "ChatGPT":
+        text = getconservationsjson(content)
+        chatlist = parse_GG_conversations(text)
+    elif sort == "deepseek":
+        text = getconservationsjson(content)
+        chatlist = parse_DeepSeek_conversations(text)
+    else:
+        text = getGeminiConversationsjson(content)
+        chatlist = parse_GG_conversations(text)
+    # 3. 处理数据
+    time = analyze_time_distribution(chatlist)
+    words = analyze_word_count(chatlist)
+    bubbles = analyze_bubble_counts(chatlist)
+    code = analyze_code_stats(chatlist)
+    emotions = analyze_emotion_trend(chatlist)
     keywords = extract_keywords_from_chat(
-        chat_data_list=process2, 
+        chat_data_list=chatlist, 
         kw_model=GLOBAL_KW_MODEL,  # <--- 传参
         top_n=7,
         target_role="all"
@@ -49,5 +59,6 @@ async def process_zip(file: UploadFile = File(...)):
     return {
                     "status": "success", 
                     "files": [time, words, bubbles, code, emotions, keywords]
+                    # "files": [chatlist]
     }
 # 做了词云，做了小时统计，做了代码统计, 字数统计

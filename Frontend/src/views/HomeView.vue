@@ -9,7 +9,9 @@
 
   const handleData = (amount) =>{
     dataTransfer.value = amount
-    isSent.value = true
+    if (amount) {
+      isSent.value = true
+    }
   }
 </script>
 
